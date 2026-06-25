@@ -232,7 +232,7 @@ tr.open .chev{transform:rotate(90deg)}
     <div class="tbl-wrap" id="lbBody"></div>
   </div>
 
-  <div class="scope">Datos por <b>Call Date</b> del periodo · todas las fuentes · Show rate = Realizadas / Agendadas · Conversión = Cierres / Agendadas.</div>
+  <div class="scope">Datos por <b>Call Date</b> del periodo · todas las fuentes · Show rate = Realizadas / (Realizadas + Cancel + No show) · Conversión = Cierres / (Realizadas + Cancel + No show) · se excluyen <b>Nueva Reserva</b> y <b>Reagendado</b> (futuras).</div>
 </div>
 
 <div class="modal-bg" id="ov">
@@ -344,7 +344,7 @@ function metrics(d){
   const realiz=cierres+(+d.fu||0)+(+d.lost||0);
   const noreal=(+d.cancel||0)+(+d.noshow||0);
   const pend=(+d.nr||0)+(+d.reag||0);const res=realiz+noreal;
-  return {ag,cierres,realiz,noreal,pend,show:ag?realiz/ag:null,closer:realiz?cierres/realiz:null,conv:ag?cierres/ag:null};
+  return {ag,cierres,realiz,noreal,pend,res,show:res?realiz/res:null,closer:realiz?cierres/realiz:null,conv:res?cierres/res:null};
 }
 const pct=v=>v==null?'—':Math.round(v*100)+'%';
 // Normaliza un mapa crudo de UTM terms {nombreCrudo:{counts}} -> limpio:
@@ -417,8 +417,9 @@ function aggregate(p){
   repEntries(p).forEach(([,d])=>{const m=metrics(d);
     t.ag+=m.ag;t.cierres+=m.cierres;t.realiz+=m.realiz;t.noreal+=m.noreal;t.pend+=m.pend;
     t.fu+=(+d.fu||0);t.lost+=(+d.lost||0);t.cancel+=(+d.cancel||0);t.noshow+=(+d.noshow||0);t.nr+=(+d.nr||0);});
-  t.show=t.ag?t.realiz/t.ag:null;
-  t.closer=t.realiz?t.cierres/t.realiz:null;t.conv=t.ag?t.cierres/t.ag:null;return t;
+  t.res=t.realiz+t.noreal;
+  t.show=t.res?t.realiz/t.res:null;
+  t.closer=t.realiz?t.cierres/t.realiz:null;t.conv=t.res?t.cierres/t.res:null;return t;
 }
 
 const MM=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -487,10 +488,10 @@ function renderKPIs(){
   const cards=[
     {l:'Agendadas',e:'📅',v:t.ag,c:'c-blue',sub:ptv?deltaSub(t.ag,ptv.ag,false,who):who},
     {l:'Realizadas',e:'✅',v:t.realiz,c:'c-green',sub:ptv?deltaSub(t.realiz,ptv.realiz,false,''):(t.pend+' pendientes')},
-    {l:'Show rate',e:'📈',v:pct(t.show),c:'c-teal',sub:ptv?deltaSub(t.show,ptv.show,true,''):('de '+t.ag+' agendadas')},
+    {l:'Show rate',e:'📈',v:pct(t.show),c:'c-teal',sub:ptv?deltaSub(t.show,ptv.show,true,''):('de '+(t.realiz+t.noreal)+' resueltas')},
     {l:'Cierres',e:'💰',v:t.cierres,c:'c-yellow',sub:ptv?deltaSub(t.cierres,ptv.cierres,false,''):'CtD+Depó+Split'},
     {l:'Close rate',e:'🎯',v:pct(t.closer),c:'c-pink',sub:ptv?deltaSub(t.closer,ptv.closer,true,''):'s/ realizadas'},
-    {l:'Conversión',e:'🔁',v:pct(t.conv),c:'c-purple',sub:ptv?deltaSub(t.conv,ptv.conv,true,''):'s/ agendadas'}
+    {l:'Conversión',e:'🔁',v:pct(t.conv),c:'c-purple',sub:ptv?deltaSub(t.conv,ptv.conv,true,''):'s/ resueltas (excl. futuras)'}
   ];
   box.innerHTML=cards.map(c=>`<div class="kpi ${c.c}"><div class="kpi-lbl">${c.l} <span>${c.e}</span></div><div class="kpi-val">${c.v}</div><div class="kpi-sub">${c.sub||''}</div></div>`).join('');
 }
@@ -498,13 +499,13 @@ function renderConv(){
   const body=document.getElementById('convBody');const p=activePeriod();
   document.getElementById('convHint').textContent=filterPerson==='ALL'?'todo el equipo':filterPerson;
   if(!p){body.innerHTML='';return;}
-  const t=aggregate(p);const ag=t.ag||1;
+  const t=aggregate(p);const base=(t.realiz+t.noreal)||1;
   const stages=[
-    {nm:'Agendadas',vl:t.ag,w:100,rt:'',col:'#2563eb'},
-    {nm:'Realizadas',vl:t.realiz,w:Math.round(t.realiz/ag*100),rt:'show '+pct(t.show),col:'#0d9488'},
-    {nm:'Cierres',vl:t.cierres,w:Math.round(t.cierres/ag*100),rt:'close '+pct(t.closer),col:'#ef7c1f'}
+    {nm:'Resueltas',vl:t.realiz+t.noreal,w:100,rt:t.pend?('+'+t.pend+' futuras excl.'):'',col:'#2563eb'},
+    {nm:'Realizadas',vl:t.realiz,w:Math.round(t.realiz/base*100),rt:'show '+pct(t.show),col:'#0d9488'},
+    {nm:'Cierres',vl:t.cierres,w:Math.round(t.cierres/base*100),rt:'close '+pct(t.closer),col:'#ef7c1f'}
   ];
-  body.innerHTML=`<div class="conv-big"><span class="num">${pct(t.conv)}</span><span class="cap">de agendada a cierre · ${t.cierres}/${t.ag}</span></div>`+
+  body.innerHTML=`<div class="conv-big"><span class="num">${pct(t.conv)}</span><span class="cap">de resuelta a cierre · ${t.cierres}/${t.realiz+t.noreal}</span></div>`+
     `<div class="funnel">`+stages.map(s=>`<div class="fn-stage"><div class="top"><span><span class="nm">${s.nm}</span><span class="rt">${s.rt}</span></span><span class="vl">${s.vl}</span></div><div class="fn-bar"><i style="width:${s.w}%;background:${s.col}"></i></div></div>`).join('')+`</div>`;
 }
 function renderDonut(){
