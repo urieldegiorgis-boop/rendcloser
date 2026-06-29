@@ -232,7 +232,7 @@ tr.open .chev{transform:rotate(90deg)}
     <div class="tbl-wrap" id="lbBody"></div>
   </div>
 
-  <div class="scope">Datos por <b>Call Date</b> del periodo · todas las fuentes · Show rate = Realizadas / (Realizadas + Cancel + No show) · Conversión = Cierres / (Realizadas + Cancel + No show) · se excluyen <b>Nueva Reserva</b> y <b>Reagendado</b> (futuras).</div>
+  <div class="scope">Datos por <b>Call Date</b> del periodo · todas las fuentes · Show rate = Realizadas / llamadas cuya fecha ya llegó (las de días futuros aparecen pero no cuentan hasta su día) · Conversión = Cierres / Resueltas.</div>
 </div>
 
 <div class="modal-bg" id="ov">
@@ -344,7 +344,8 @@ function metrics(d){
   const realiz=cierres+(+d.fu||0)+(+d.lost||0);
   const noreal=(+d.cancel||0)+(+d.noshow||0);
   const pend=(+d.nr||0)+(+d.reag||0);const res=realiz+noreal;
-  return {ag,cierres,realiz,noreal,pend,res,show:res?realiz/res:null,closer:realiz?cierres/realiz:null,conv:res?cierres/res:null};
+  const due=('due' in d)?(+d.due||0):ag; // llamadas cuya fecha ya llegó (hoy o antes). Dato viejo sin 'due' -> usa el total.
+  return {ag,cierres,realiz,noreal,pend,due,res,show:due?realiz/due:null,closer:realiz?cierres/realiz:null,conv:res?cierres/res:null};
 }
 const pct=v=>v==null?'—':Math.round(v*100)+'%';
 // Normaliza un mapa crudo de UTM terms {nombreCrudo:{counts}} -> limpio:
@@ -413,12 +414,12 @@ function prevPeriod(){
 }
 function repEntries(p){const all=Object.entries(p[curRole]);return filterPerson==='ALL'?all:all.filter(([n])=>n===filterPerson);}
 function aggregate(p){
-  let t={ag:0,cierres:0,realiz:0,noreal:0,pend:0,fu:0,lost:0,cancel:0,noshow:0,nr:0};
+  let t={ag:0,cierres:0,realiz:0,noreal:0,pend:0,due:0,fu:0,lost:0,cancel:0,noshow:0,nr:0};
   repEntries(p).forEach(([,d])=>{const m=metrics(d);
-    t.ag+=m.ag;t.cierres+=m.cierres;t.realiz+=m.realiz;t.noreal+=m.noreal;t.pend+=m.pend;
+    t.ag+=m.ag;t.cierres+=m.cierres;t.realiz+=m.realiz;t.noreal+=m.noreal;t.pend+=m.pend;t.due+=m.due;
     t.fu+=(+d.fu||0);t.lost+=(+d.lost||0);t.cancel+=(+d.cancel||0);t.noshow+=(+d.noshow||0);t.nr+=(+d.nr||0);});
   t.res=t.realiz+t.noreal;
-  t.show=t.res?t.realiz/t.res:null;
+  t.show=t.due?t.realiz/t.due:null;
   t.closer=t.realiz?t.cierres/t.realiz:null;t.conv=t.res?t.cierres/t.res:null;return t;
 }
 
@@ -490,7 +491,7 @@ function renderKPIs(){
   const cards=[
     {l:'Agendadas',e:'📅',v:t.ag,c:'c-blue',sub:ptv?deltaSub(t.ag,ptv.ag,false,who):who},
     {l:'Realizadas',e:'✅',v:t.realiz,c:'c-green',sub:ptv?deltaSub(t.realiz,ptv.realiz,false,''):(t.pend+' pendientes')},
-    {l:'Show rate',e:'📈',v:pct(t.show),c:'c-teal',sub:ptv?deltaSub(t.show,ptv.show,true,''):('de '+(t.realiz+t.noreal)+' resueltas')},
+    {l:'Show rate',e:'📈',v:pct(t.show),c:'c-teal',sub:ptv?deltaSub(t.show,ptv.show,true,''):('de '+t.due+' con fecha hasta hoy')},
     {l:'Cierres',e:'💰',v:t.cierres,c:'c-yellow',sub:ptv?deltaSub(t.cierres,ptv.cierres,false,''):'CtD+Depó+Split'},
     {l:'Close rate',e:'🎯',v:pct(t.closer),c:'c-pink',sub:ptv?deltaSub(t.closer,ptv.closer,true,''):'s/ realizadas'},
     {l:'Conversión',e:'🔁',v:pct(t.conv),c:'c-purple',sub:ptv?deltaSub(t.conv,ptv.conv,true,''):'s/ resueltas (excl. futuras)'}
@@ -559,9 +560,9 @@ function renderLeaderboard(){
       else h+=`<td class="muted">${r[c.k]}</td>`;});
     h+='</tr>';
     h+=`<tr class="lead-det" style="display:none"><td colspan="${ncols}">${leadDetailHTML(p,r.name)}</td></tr>`;});
-  let T={ag:0,realiz:0,cierres:0,fu:0,lost:0,cancel:0,noshow:0,noreal:0,nr:0};
+  let T={ag:0,realiz:0,cierres:0,due:0,fu:0,lost:0,cancel:0,noshow:0,noreal:0,nr:0};
   rows.forEach(r=>{Object.keys(T).forEach(k=>T[k]+=r[k]);});
-  const tS=T.ag?T.realiz/T.ag:null,tConv=T.ag?T.cierres/T.ag:null;
+  const tS=T.due?T.realiz/T.due:null,tConv=T.ag?T.cierres/T.ag:null;
   h+='<tr class="tot"><td>TOTAL</td>';
   cols.forEach(c=>{if(c.k==='show')h+=`<td>${pct(tS)}</td>`;else if(c.k==='conv')h+=`<td class="conv">${pct(tConv)}</td>`;
     else if(c.cls==='money')h+=`<td><span class="money">${T[c.k]}</span></td>`;else h+=`<td>${T[c.k]}</td>`;});
