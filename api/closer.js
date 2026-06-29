@@ -90,6 +90,8 @@ module.exports = async (req, res) => {
   };
 
   const authHeader = 'Basic ' + Buffer.from(apiKey + ':').toString('base64');
+  // "Hoy" en hora de España. Una llamada solo cuenta para el show rate si su fecha ya llegó (hoy o antes).
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }); // YYYY-MM-DD
   const closer = {};
   const detCloser = {};
   let cursor = null, guard = 0;
@@ -129,6 +131,9 @@ module.exports = async (req, res) => {
           url: 'https://app.close.com/lead/' + lead.id + '/',
         };
         bump(closer, who, bucket);
+        if (!('due' in closer[who])) closer[who].due = 0;
+        const dstr = String(rec.dt || '').slice(0, 10); // fecha de la llamada (YYYY-MM-DD)
+        if (dstr && dstr <= todayStr) closer[who].due += 1; // su fecha ya llegó -> cuenta para el show rate
         pushDet(detCloser, who, rec);
       }
       cursor = json.cursor;
