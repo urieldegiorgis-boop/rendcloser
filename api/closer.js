@@ -134,7 +134,11 @@ module.exports = async (req, res) => {
       cursor = json.cursor;
     } while (cursor && ++guard < 60);
 
-    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=600');
+    // ── CACHÉ AMPLIADA (este es el cambio que acelera el panel) ───────────────
+    // s-maxage=60        -> respuesta "fresca" durante 60 s (sirve instantánea desde la caché de Vercel)
+    // stale-while-revalidate=86400 -> durante 1 día más, sirve la versión guardada AL INSTANTE
+    //                        y refresca por detrás, así casi nunca vuelve a bloquear esperando a Close.
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=86400');
     return res.status(200).json({ from: start, to: end, closer, det: { closer: detCloser } });
   } catch (e) {
     return res.status(500).json({ error: 'Fallo al consultar Close', detail: String(e).slice(0, 500) });
