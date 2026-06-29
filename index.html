@@ -454,13 +454,15 @@ function renderTabs(){
   document.getElementById('customRange').style.display=activeRangeKey==='custom'?'flex':'none';
   box.querySelectorAll('.ptab').forEach(b=>b.onclick=()=>selectRange(b.dataset.range));
 }
+var LIVE_RANGE={today:1,tomorrow:1,this_week:1,this_month:1,custom:1};
 function selectRange(key){
   activeRangeKey=key;
   if(key==='custom'){renderTabs();return;}
   const range=computeRange(key);
-  const ex=DB.periods.find(p=>p.id===range.id && Object.keys(p[curRole]||{}).length);
-  if(ex){curPeriodId=ex.id;filterPerson='ALL';renderAll();}
-  else{curPeriodId=null;renderTabs();syncRange(range);}
+  renderTabs();
+  const ex=DB.periods.find(p=>p.id===range.id);
+  if(ex){curPeriodId=ex.id;filterPerson='ALL';renderAll();if(LIVE_RANGE[key])syncRange(range,true);}
+  else{curPeriodId=null;syncRange(range,false);}
 }
 function renderResp(){
   const sel=document.getElementById('respSel');const p=activePeriod();
@@ -656,11 +658,11 @@ async function addPerson(r){const inp=document.getElementById('cfgCloserInput');
 
 /* ----- sincronización con Close (función serverless en Vercel: /api/close) ----- */
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-async function syncRange(range){
+async function syncRange(range,silent){
   if(!range){range=activeRangeKey==='custom'?null:computeRange(activeRangeKey);}
-  if(!range){alert('Elige un rango de fechas.');return;}
-  const btn=document.getElementById('syncBtn');const prev=btn.textContent;
-  btn.textContent='Sincronizando…';btn.disabled=true;
+  if(!range){if(!silent)alert('Elige un rango de fechas.');return;}
+  const btn=document.getElementById('syncBtn');const prev=btn?btn.textContent:'';
+  if(!silent&&btn){btn.textContent='Sincronizando…';btn.disabled=true;}
   try{
     const r=await fetch('/api/closer?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to));
     if(!r.ok) throw new Error('HTTP '+r.status);
@@ -674,11 +676,17 @@ async function syncRange(range){
     p.crea=normalizeCreatives(data.crea||{});
     const dd=data.det||{};
     p.det={set:dd.set||{},cold:dd.cold||{},closer:dd.closer||{},vsl:normDet(dd.vsl||{}),vslt:normDet(dd.vslt||{}),crea:normDet(dd.crea||{})};
-    curPeriodId=p.id;filterPerson='ALL';
-    await save();renderAll();
-    btn.textContent='✓ '+range.label;setTimeout(()=>{btn.textContent=prev;btn.disabled=false;},1600);
+    p.synced=Date.now();
+    await save();
+    if(!silent){
+      curPeriodId=p.id;filterPerson='ALL';renderAll();
+      if(btn){btn.textContent='✓ '+range.label;setTimeout(()=>{btn.textContent=prev;btn.disabled=false;},1600);}
+    } else if((computeRange(activeRangeKey)||{}).id===range.id){
+      curPeriodId=p.id;renderAll();
+    }
   }catch(e){
-    btn.textContent=prev;btn.disabled=false;
+    if(silent)return;
+    if(btn){btn.textContent=prev;btn.disabled=false;}
     alert('No se pudo sincronizar con Close.\n\nFunciona cuando el panel está desplegado en Vercel con la función /api/close y la variable CLOSE_API_KEY configurada. En local no hay backend.\n\nDetalle: '+e.message);
   }
 }
