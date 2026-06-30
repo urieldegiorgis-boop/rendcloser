@@ -414,10 +414,10 @@ function prevPeriod(){
 }
 function repEntries(p){const all=Object.entries(p[curRole]);return filterPerson==='ALL'?all:all.filter(([n])=>n===filterPerson);}
 function aggregate(p){
-  let t={ag:0,cierres:0,realiz:0,noreal:0,pend:0,due:0,fu:0,lost:0,cancel:0,noshow:0,nr:0};
+  let t={ag:0,cierres:0,realiz:0,noreal:0,pend:0,due:0,fu:0,lost:0,cancel:0,noshow:0,nr:0,reag:0};
   repEntries(p).forEach(([,d])=>{const m=metrics(d);
     t.ag+=m.ag;t.cierres+=m.cierres;t.realiz+=m.realiz;t.noreal+=m.noreal;t.pend+=m.pend;t.due+=m.due;
-    t.fu+=(+d.fu||0);t.lost+=(+d.lost||0);t.cancel+=(+d.cancel||0);t.noshow+=(+d.noshow||0);t.nr+=(+d.nr||0);});
+    t.fu+=(+d.fu||0);t.lost+=(+d.lost||0);t.cancel+=(+d.cancel||0);t.noshow+=(+d.noshow||0);t.nr+=(+d.nr||0);t.reag+=(+d.reag||0);});
   t.res=t.realiz+t.noreal;
   t.show=t.due?t.realiz/t.due:null;
   t.closer=t.realiz?t.cierres/t.realiz:null;t.conv=t.res?t.cierres/t.res:null;return t;
@@ -537,11 +537,11 @@ function renderLeaderboard(){
       :'VSL Total = todos los leads con Source vsl (puros + los trabajados por setter/cold caller). Se llena desde Close al sincronizar.')
     :'No hay datos para este rol en este periodo. Pulsa “↻ Sincronizar Close”.';
     body.innerHTML='<div style="padding:24px;color:var(--t3);font-size:12px;line-height:1.6">'+msg+'</div>';return;}
-  let rows=repEntries(p).map(([name,d])=>({name,fu:+d.fu||0,lost:+d.lost||0,cancel:+d.cancel||0,noshow:+d.noshow||0,nr:+d.nr||0,...metrics(d)}));
+  let rows=repEntries(p).map(([name,d])=>({name,fu:+d.fu||0,lost:+d.lost||0,cancel:+d.cancel||0,noshow:+d.noshow||0,nr:+d.nr||0,reag:+d.reag||0,...metrics(d)}));
   const cols=[
     {k:'ag',h:'Agend.'},{k:'realiz',h:'Realiz.'},{k:'cierres',h:'Cierres',cls:'money'},
     {k:'fu',h:'Follow up'},{k:'lost',h:'Lost/Bad Fit'},{k:'cancel',h:'Cancel'},{k:'noshow',h:'No show'},
-    {k:'noreal',h:'No realiz.'},{k:'nr',h:'Nueva Res.'},
+    {k:'noreal',h:'No realiz.'},{k:'reag',h:'Reagend.'},{k:'nr',h:'Nueva Res.'},
     {k:'show',h:'Show rate',pct:true,bar:true},{k:'conv',h:'Conv.',pct:true,cls:'conv'}
   ];
   const getv=(r,k)=>k==='name'?r.name.toLowerCase():(r[k]??-1);
@@ -560,7 +560,7 @@ function renderLeaderboard(){
       else h+=`<td class="muted">${r[c.k]}</td>`;});
     h+='</tr>';
     h+=`<tr class="lead-det" style="display:none"><td colspan="${ncols}">${leadDetailHTML(p,r.name)}</td></tr>`;});
-  let T={ag:0,realiz:0,cierres:0,due:0,fu:0,lost:0,cancel:0,noshow:0,noreal:0,nr:0};
+  let T={ag:0,realiz:0,cierres:0,due:0,fu:0,lost:0,cancel:0,noshow:0,noreal:0,nr:0,reag:0};
   rows.forEach(r=>{Object.keys(T).forEach(k=>T[k]+=r[k]);});
   const tS=T.due?T.realiz/T.due:null,tConv=T.ag?T.cierres/T.ag:null;
   h+='<tr class="tot"><td>TOTAL</td>';
