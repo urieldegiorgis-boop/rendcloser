@@ -31,6 +31,19 @@ const STATUS = {
 };
 
 const blank = () => ({ ctd:0, depo:0, split:0, fu:0, lost:0, cancel:0, noshow:0, nr:0, reag:0 });
+// Etiqueta legible de cada estado (verificada contra Close). Solo para ?debug=1.
+const STATUS_LABEL = {
+  stat_or2XIbsvG8ClthhoLyqfmFchIYcetvCHR8j1sZM6dIi: 'Close the Deal',
+  stat_Que6zp8r2nrt5hsujY1GiOS1AvUSuXvl1Mn42acVW1n: 'Deposito',
+  stat_PLFEehKTh4RpixsDl734y6ZhewczaVM2s4jbw0WqZ5w: 'Split Pay',
+  stat_PvrKkDHFKwlDBT2wsLkrQCxKQxc6W5nba03ftYs8Om2: 'Follow up',
+  stat_OKpqX3sp2UG3Rrj01l3JUoqFGaDw9tl9c1T90tCApE7: 'Lost / Bad Fit',
+  stat_pQ2Ap6ZeDcWz7T3ZmYVXCW2ldcXf9MMVnIdDyaCMMBv: 'Cancel',
+  stat_MiEXbLVcOtbTVPQv3WJnIISlGfxuwLPTzYyqt716Ltw: 'No show',
+  stat_g99SPoAQUzxbKcMcJdAUhoe4W4H1T1GchIdHaMzLkLS: 'No Show VSL',
+  stat_oI5dIRSQPlQ8DqkJJLzbqfVKBhhT915w73NctzINXwY: 'Nueva Reserva',
+  stat_TlMZO9rIF0ixAIpSJxSTS9zIkyVoHaZkifvjXdGDSQA: 'Reagendado',
+};
 function bump(map, key, bucket) {
   if (!key) key = '(sin nombrar)';
   if (!map[key]) map[key] = blank();
@@ -96,6 +109,15 @@ module.exports = async (req, res) => {
   const detCloser = {};
   let cursor = null, guard = 0;
 
+  // --- Modo diagnóstico: ?debug=1 devuelve la lista plana de leads contados ---
+  const DEBUG = req.query.debug === '1' || req.query.debug === 'true';
+  const dbg = { total_leads_devueltos: 0, no_contables: 0, sin_closer: 0, contados: 0, leads: [] };
+  const seenCloser = {}; // anti-duplicados: no contar el mismo lead dos veces bajo el mismo closer
+  const onceCloser = (who, id) => {
+    const s = (seenCloser[who] || (seenCloser[who] = new Set()));
+    if (s.has(id)) return false; s.add(id); return true;
+  };
+
   try {
     do {
       const body = {
@@ -116,10 +138,12 @@ module.exports = async (req, res) => {
       }
       const json = await r.json();
       for (const lead of (json.data || [])) {
+        if (DEBUG) dbg.total_leads_devueltos++;
         const bucket = STATUS[lead.status_id];
-        if (!bucket) continue;
+        if (!bucket) { if (DEBUG) dbg.no_contables++; continue; }
         const who = getCustom(lead, F.closer).trim();
-        if (!who) continue; // sin closer asignado -> no entra
+        if (!who) { if (DEBUG) dbg.sin_closer++; continue; } // sin closer asignado -> no entra
+        if (!onceCloser(who, lead.id)) continue; // ya contado bajo este closer
 
         const { email, phone } = leadEmailPhone(lead);
         const rec = {
@@ -135,15 +159,28 @@ module.exports = async (req, res) => {
         const dstr = String(rec.dt || '').slice(0, 10); // fecha de la llamada (YYYY-MM-DD)
         if (dstr && dstr <= todayStr) closer[who].due += 1; // su fecha ya llegó -> cuenta para el show rate
         pushDet(detCloser, who, rec);
+
+        if (DEBUG) {
+          dbg.contados++;
+          dbg.leads.push({
+            lead: rec.n,
+            call_date: rec.dt || '(vacío)',
+            estado: STATUS_LABEL[lead.status_id] || lead.status_id,
+            closer: who,
+          });
+        }
       }
       cursor = json.cursor;
     } while (cursor && ++guard < 60);
 
-    // ── CACHÉ AMPLIADA (este es el cambio que acelera el panel) ───────────────
-    // s-maxage=60        -> respuesta "fresca" durante 60 s (sirve instantánea desde la caché de Vercel)
-    // stale-while-revalidate=86400 -> durante 1 día más, sirve la versión guardada AL INSTANTE
-    //                        y refresca por detrás, así casi nunca vuelve a bloquear esperando a Close.
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=86400');
+    // no-store: cada "↻ Sincronizar" consulta Close EN VIVO.
+    // Antes: s-maxage=60, stale-while-revalidate=86400 -> servía datos de hasta 1 DÍA antes,
+    // por eso el estado de un lead podía tardar en actualizarse tras cerrar.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    if (DEBUG) {
+      dbg.leads.sort((a, b) => String(a.call_date).localeCompare(String(b.call_date)));
+      return res.status(200).json({ from: start, to: end, closer, det: { closer: detCloser }, _debug: dbg });
+    }
     return res.status(200).json({ from: start, to: end, closer, det: { closer: detCloser } });
   } catch (e) {
     return res.status(500).json({ error: 'Fallo al consultar Close', detail: String(e).slice(0, 500) });
