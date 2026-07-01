@@ -659,8 +659,16 @@ async function addPerson(r){const inp=document.getElementById('cfgCloserInput');
 
 /* ----- sincronización con Close (función serverless en Vercel: /api/close) ----- */
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function customRangeForSync(){
+  const cf=document.getElementById('cFrom').value, ct=document.getElementById('cTo').value;
+  if(cf&&ct) return computeRange('custom',cf,ct);
+  const ap=activePeriod();
+  if(ap&&ap.from&&ap.to) return {key:'custom',id:ap.id,label:ap.label||ap.id,from:ap.from,to:ap.to};
+  if(ap&&/^p_c/.test(String(ap.id))){const m=String(ap.id).match(/^p_c(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);if(m)return computeRange('custom',m[1],m[2]);}
+  return null;
+}
 async function syncRange(range,silent){
-  if(!range){range=activeRangeKey==='custom'?null:computeRange(activeRangeKey);}
+  if(!range){range=activeRangeKey==='custom'?customRangeForSync():computeRange(activeRangeKey);}
   if(!range){if(!silent)alert('Elige un rango de fechas.');return;}
   const btn=document.getElementById('syncBtn');const prev=btn?btn.textContent:'';
   if(!silent&&btn){btn.textContent='Sincronizando…';btn.disabled=true;}
@@ -709,7 +717,10 @@ document.getElementById('cGo').onclick=()=>{
   if(cf>ct){alert('La fecha de inicio es posterior a la de fin.');return;}
   const range=computeRange('custom',cf,ct);
   const ex=DB.periods.find(p=>p.id===range.id && Object.keys(p[curRole]||{}).length);
-  if(ex){curPeriodId=ex.id;filterPerson='ALL';renderAll();}else{curPeriodId=null;syncRange(range);}
+  // Muestra al instante la foto guardada si existe, pero SIEMPRE re-sincroniza en vivo
+  // con Close por detrás (custom está en LIVE_RANGE), para reflejar el estado actual.
+  if(ex){curPeriodId=ex.id;filterPerson='ALL';renderAll();syncRange(range,true);}
+  else{curPeriodId=null;syncRange(range,false);}
 };
 document.getElementById('lbTitle').style.cursor='pointer';
 document.getElementById('dlBtn').onclick=downloadPDF;
